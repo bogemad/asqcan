@@ -4,17 +4,20 @@ import asqcan, argparse, distutils, os
 from distutils.spawn import find_executable
 
 # Import arguments
-print "test1"
 parser = argparse.ArgumentParser()
-parser.add_argument("-q", "--fastq-dir", help="Path to a directory with your interleaved fastq files.", action="store", dest="reads_dir")
-parser.add_argument("-o", "--output-directory", help="Path to the output directory. A directory will be created if one does not exist.", action="store", dest="outdir")
-parser.add_argument("-b", "--blast_database", help="Path to the local nt blast database. This pipeline requires you to download a copy of this database. See https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Web&PAGE_TYPE=BlastDocs&DOC_TYPE=Download", action="store", dest="db")
-parser.add_argument("-t", "--threads", help="Number of threads to use for multiprocessing.", action="store", dest="threads", type=int, default=1)
-parser.add_argument("-m", "--max_memory", help="Maximum amount of RAM to assign to the pipeline in GB (Just the number).", action="store", dest="mem", type=int, default=8)
-parser.add_argument("-f", "--force", help="Overwrite files in the output directories.", action='store_true', default=False)
-parser.add_argument('--version', action='version', version='%(prog)s 0.1')
-parser.add_argument('-v', '--verbose', action='store_true', default=False)
+optional = parser._action_groups.pop()
+required = parser.add_argument_group('required arguments')
 
+required.add_argument("-q", "--fastq-dir", required=True, help="Path to a directory with your interleaved fastq files.", action="store", dest="reads_dir")
+required.add_argument("-o", "--output-directory", required=True, help="Path to the output directory. A directory will be created if one does not exist.", action="store", dest="outdir")
+required.add_argument("-b", "--blast_database", required=True, help="Path to the local nt blast database. This pipeline requires you to download a copy of this database. See https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Web&PAGE_TYPE=BlastDocs&DOC_TYPE=Download", action="store", dest="db")
+optional.add_argument("-t", "--threads", help="Number of threads to use for multiprocessing.", action="store", dest="threads", type=int, default=1)
+optional.add_argument("-m", "--max_memory", help="Maximum amount of RAM to assign to the pipeline in GB (Just the number).", action="store", dest="mem", type=int, default=8)
+optional.add_argument("-f", "--force", help="Overwrite files in the output directories.", action='store_true', default=False)
+optional.add_argument('--version', action='version', version='%(prog)s 0.1')
+optional.add_argument('-v', '--verbose', help="Increase verbosity on command line output (n.b. verbose output is always saved to asqcan.log in the output directory).", action='store_true', default=False)
+
+parser._action_groups.append(optional)
 
 args = parser.parse_args()
 
