@@ -4,7 +4,7 @@ import asqcan, argparse, distutils, os
 from distutils.spawn import find_executable
 
 # Import arguments
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(description="asqcan - A combined pipeline for bacterial genome ASsembly, Quality Control, and ANnotation.")
 optional = parser._action_groups.pop()
 required = parser.add_argument_group('required arguments')
 
