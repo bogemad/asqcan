@@ -11,9 +11,9 @@ asqcan is a workflow pipeline for the automated assembly, quality control and an
 
 The asqcan pipleine runs these five steps on each .fastq or .fastq.gz reads file in the directory provided by the -i option. When asqcan completes, it generates a report on the success or failure of each step of the pipline (asqcan_rport.tsv). Successful steps will not be rerun on a subsequent execution, i.e. asqcan will detect successful steps and ignore them in future runs. 
 
-###  Dependancies
+###  Requirements
 
-asqcan requires:
+asqcan requires a linux-based system and the following:
 
 - python (2.7)
 - [GNU parallel](https://www.gnu.org/software/parallel/) (>=20170422)
@@ -26,14 +26,17 @@ asqcan requires:
 
 ### Installation
 
-Download and install with:
+To download and install asqcan with all dependencies use conda:
+```
+conda install -c conda-forge -c bioconda asqcan
+```
 
+or pip (requires manual dependency installation): 
 ```
 pip install git+https://github.com/bogemad/asqcan.git
 ```
 
-or
-
+or a manual install (again this requires you to manually install dependencies):
 ```
 git clone https://github.com/bogemad/asqcan.git
 cd asqcan
