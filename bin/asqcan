@@ -1,0 +1,55 @@
+#!/usr/bin/env python2
+
+import asqcan, argparse, distutils, os
+from distutils.spawn import find_executable
+
+# Import arguments
+print "test1"
+parser = argparse.ArgumentParser()
+parser.add_argument("-q", "--fastq-dir", help="Path to a directory with your interleaved fastq files.", action="store", dest="reads_dir")
+parser.add_argument("-o", "--output-directory", help="Path to the output directory. A directory will be created if one does not exist.", action="store", dest="outdir")
+parser.add_argument("-b", "--blast_database", help="Path to the local nt blast database. This pipeline requires you to download a copy of this database. See https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Web&PAGE_TYPE=BlastDocs&DOC_TYPE=Download", action="store", dest="db")
+parser.add_argument("-t", "--threads", help="Number of threads to use for multiprocessing.", action="store", dest="threads", type=int, default=1)
+parser.add_argument("-m", "--max_memory", help="Maximum amount of RAM to assign to the pipeline in GB (Just the number).", action="store", dest="mem", type=int, default=8)
+parser.add_argument("-f", "--force", help="Overwrite files in the output directories.", action='store_true', default=False)
+parser.add_argument('--version', action='version', version='%(prog)s 0.1')
+parser.add_argument('-v', '--verbose', action='store_true', default=False)
+
+
+args = parser.parse_args()
+
+#Check for dependencies
+print "Checking dependencies...\n"
+if not find_executable("spades.py"):
+	print "spades not found. Please install the spades assembler."
+	sys.exit(1)
+if not find_executable("quast.py"):
+	print "quast not found. Please install the quast qc pipeline."
+	sys.exit(1)
+if not find_executable("fastqc"):
+	print "fastqc not found. Please install the fastqc pipeline."
+	sys.exit(1)
+if not find_executable("blobtools"):
+	print "blobtools not found. Please install the blobtools pipeline."
+	sys.exit(1)
+if not find_executable("blastn"):
+	print "blastn not found. Please install the ncbi BLAST pipeline."
+	sys.exit(1)
+if not find_executable("prokka"):
+	print "prokka not found. Please install the prokka annotator."
+	sys.exit(1)
+if not find_executable("parallel"):
+	print "parallel not found. Please install GNU parallel."
+	sys.exit(1)
+
+
+print "Running asqcan with the following options:"
+print "Reads directory = {}".format(args.reads_dir)
+print "output-directory = {}".format(args.outdir)
+print "threads = {}".format(args.threads)
+print "max_memory = {}".format(args.mem)
+print "blast_database = {}".format(args.db)
+print "Force overwrite of previous output: {}\n".format(args.force)
+
+asqcan.run(args.threads, args.mem, args.db, os.path.abspath(args.reads_dir), args.force, os.path.abspath(args.outdir), args.verbose)
+
