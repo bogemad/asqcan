@@ -10,7 +10,7 @@ class Asqcan():
 		self.mem = str(mem)
 		self.db = db
 		self.reads_dir = reads_dir
-		self.reads_list = [ os.path.join(reads_dir, reads) for reads in os.listdir(reads_dir) if (os.path.isfile(os.path.join(reads_dir, reads)) and (reads.endswith('.fastq') or reads.endswith('.fastq.gz')))]
+		self.reads_list = [ os.path.join(reads_dir, reads) for reads in os.listdir(reads_dir) if (os.path.isfile(os.path.join(reads_dir, reads)) and reads.endswith(('.fastq', '.fastq.gz', '.fq', '.fq.gz')))]
 		self.outdir = outdir
 		self.fastqc_dir = os.path.join(outdir, 'qc_plots', 'fastqc')
 		self.raw_ass_dir = os.path.join(outdir, 'raw_assemblies')
@@ -35,17 +35,15 @@ class Asqcan():
 
 	
 	def open_reads(self, reads):
-		if reads.endswith('.fastq'):
-			reads_handle = open(reads, 'r')
-		elif reads.endswith('fastq.gz'):
+		if reads.endswith('.gz'):
 			reads_handle = gzip.open(reads, 'rt')
 		else:
-			logging.info("Reads: {} not fastq!")
-			sys.exit(1)
+			reads_handle = open(reads, 'r')
 		return reads_handle
 	
 	def clear_temp_dir(self):
-		shutil.rmtree(self.temp_dir)
+		if os.path.isdir(self.temp_dir):
+			shutil.rmtree(self.temp_dir)
 		os.makedirs(self.temp_dir)
 	
 	def kmer_calc(self, reads):
@@ -175,7 +173,7 @@ class Asqcan():
 		make_outdirs(os.path.join(self.blobtools_dir, sample_name))
 		assembly = os.path.join(self.raw_ass_dir, sample_name, 'scaffolds.fasta')
 		blast_hits_file = os.path.join(self.blobtools_dir, sample_name, '{}.blast_hits'.format(sample_name))
-		if not os.path.isfile(blast_hits_file):
+		if not (os.path.isfile(blast_hits_file) or self.db == "Not used"):
 			logging.info("{}: Quality checking assembly with blobtools...".format(sample_name))
 			logging.info("{}: blobtools: Searching nt database with blastn...".format(sample_name))
 			exitcode = run_command([
@@ -199,14 +197,23 @@ class Asqcan():
 		if not os.path.isfile(blobdb_file):
 			logging.info("{}: blobtools: Building blobDB...".format(sample_name))
 			logging.info("Generating {} blobDB...".format(sample_name))
-			exitcode = run_command([
-						'blobtools', 'create',
-									'-i', assembly, 
-									'-y', 'spades',
-									'-t', blast_hits_file,
-									'-x', 'bestsumorder',
-									'-o', os.path.join(self.blobtools_dir, sample_name, sample_name)
-									])
+			if self.db == "Not used":
+				exitcode = run_command([
+										'blobtools', 'create',
+										'-i', assembly, 
+										'-y', 'spades',
+										'-x', 'bestsumorder',
+										'-o', os.path.join(self.blobtools_dir, sample_name, sample_name)
+										])
+			else:
+				exitcode = run_command([
+										'blobtools', 'create',
+										'-i', assembly, 
+										'-y', 'spades',
+										'-t', blast_hits_file,
+										'-x', 'bestsumorder',
+										'-o', os.path.join(self.blobtools_dir, sample_name, sample_name)
+										])
 			self.log_exit_status(exitcode, 'blobtools create', sample_name)
 	
 	def run_bt_view(self, reads):
@@ -390,7 +397,7 @@ def configure_outdir(outdir, force):
 	else:
 		os.makedirs(outdir)
 
-def run(threads, mem, db, reads_dir, force, outdir, verbosity):
+def run(threads, mem, reads_dir, force, outdir, verbosity, db):
 	configure_outdir(outdir, force)
 	configure_logs(verbosity, outdir)
 	logging.info("Beginning asqcan run...")

@@ -6,7 +6,7 @@ def read(fname):
 
 setup(
     name = "asqcan",
-    version = "0.1",
+    version = "0.2",
     author = "Daniel Bogema",
     author_email = "daniel.bogema@dpi.nsw.gov.au",
     description = ("An ASsembly, Quality Control and ANnotation pipeline"),
