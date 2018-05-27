@@ -46,8 +46,11 @@ python setup.py install
 ### Usage
 
 ```
-usage: asqcan [-h] -q READS_DIR -o OUTDIR -b DB [-t THREADS] [-m MEM] [-f]
+usage: asqcan [-h] -q READS_DIR -o OUTDIR [-b DB] [-t THREADS] [-f]
               [--version] [-v]
+
+asqcan - A combined pipeline for bacterial genome ASsembly, Quality Control,
+and ANnotation.
 
 required arguments:
   -q READS_DIR, --fastq-dir READS_DIR
@@ -55,19 +58,20 @@ required arguments:
   -o OUTDIR, --output-directory OUTDIR
                         Path to the output directory. A directory will be
                         created if one does not exist.
-  -b DB, --blast_database DB
-                        Path to the local nt blast database. This pipeline
-                        requires you to download a copy of this database. See
-                        https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Web&PAGE_
-                        TYPE=BlastDocs&DOC_TYPE=Download
 
 optional arguments:
   -h, --help            show this help message and exit
+  -b DB, --blast_database DB
+                        Path to the local nt blast database. This pipeline
+                        does not require you to have a local copy of the nt
+                        database but without it you will not be able to use
+                        similarity data for blobtools. Similarity data adds
+                        significantly to the blobplot and blobtools table
+                        outputs of this pipeline. See https://blast.ncbi.nlm.n
+                        ih.gov/Blast.cgi?CMD=Web&PAGE_TYPE=BlastDocs&DOC_TYPE=
+                        Download to install a local nt database.
   -t THREADS, --threads THREADS
                         Number of threads to use for multiprocessing.
-  -m MEM, --max_memory MEM
-                        Maximum amount of RAM to assign to the pipeline in GB
-                        (Just the number).
   -f, --force           Overwrite files in the output directories.
   --version             show program's version number and exit
   -v, --verbose         Increase verbosity on command line output (n.b.
