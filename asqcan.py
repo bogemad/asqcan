@@ -62,12 +62,19 @@ class Asqcan():
 		sample_name = get_sample_name(reads)
 		reads_handle = self.open_reads(reads)
 		headers = []
+		seqs = []
 		for i, l in enumerate(reads_handle):
 			if i % 4 == 0:
 				headers.append(l.strip().split()[0])
+			if i % 4 == 1:
+				seqs.append(l.strip())
 			if i == 7:
 				break
 		reads_handle.close()
+		for seq in seqs:
+			if len(seq) > 301:
+				logging.info("{}: Long reads detected, please ensure your reads are sourced from the Illumina sequencing platform.".format(sample_name))
+				return False
 		if headers[0] != headers[1]:
 			sO = re.match(r'^@[SED]RR[0-9]+', headers[0])
 			if sO:
@@ -83,7 +90,8 @@ class Asqcan():
 				logging.info("{}: Reads fix complete.".format(sample_name))
 				return fixed_reads
 			else:
-				logging.info("{}: Incompatible read header format detected. Headers (writing between @ and first space) for paired reads do not match. This will caused problems for bwa in the spades pipeline when run with the --careful option. If you wish to use this option for assemblies, please correct your fastq file headers.".format(sample_name))
+				logging.info("{}: Incompatible read header format detected. Headers (writing between @ and first space) for paired reads do not match. This will caused problems for bwa in the spades pipeline when run with the --careful option. If you wish to use this option for assemblies, please ensure you are using Illumina paired-end reads and correct your fastq file headers.".format(sample_name))
+				return False
 		return reads
 	
 	def assemble_reads(self, reads):
@@ -93,6 +101,10 @@ class Asqcan():
 		os.path.isfile(output)
 		if not os.path.isfile(output):
 			reads = self.check_fix_SRA_reads(reads)
+			if reads == False:
+				logging.info("{}: Assembly aborted, reads are unsuitable for assembly.".format(sample_name))
+				self.log_exit_status('1', 'spades', sample_name)
+				return
 			logging.info("{}: Assembling reads with spades...".format(sample_name))
 			if os.path.isdir(os.path.join(self.raw_ass_dir, sample_name)):
 				shutil.rmtree(os.path.join(self.raw_ass_dir, sample_name))
