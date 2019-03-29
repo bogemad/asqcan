@@ -418,6 +418,6 @@ def run(threads, mem, reads_dir, force, outdir, verbosity, db):
 		logging.info("Force option given. Deleting previous asqcan run...")
 	logging.info("Log for the current run can be found at {}.".format(os.path.join(outdir, 'logs')))
 	job.run_asqcan()
-	logging.info("Run complete. Thanks your for using asqcan.")
+	logging.info("Run complete. Thanks for using asqcan.")
 	job.clear_temp_dir()
 
