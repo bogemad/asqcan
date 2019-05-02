@@ -3,10 +3,12 @@
 import sys, os, subprocess, multiprocessing, logging, shutil, gzip, re
 from StringIO import StringIO
 from collections import defaultdict
+from distutils.spawn import find_executable
 
 class Asqcan():
-	def __init__(self, threads, mem, db, reads_dir, outdir, verbosity):
+	def __init__(self, threads, mem, db, reads_dir, outdir, verbosity, ion_torrent):
 		self.threads = str(threads)
+		self.spades_threads = threads/4 if threads >= 4 else 1
 		self.mem = str(mem)
 		self.db = db
 		self.reads_dir = reads_dir
@@ -17,10 +19,14 @@ class Asqcan():
 		self.quast_dir = os.path.join(outdir, 'qc_plots', 'quast')
 		self.blobtools_dir = os.path.join(outdir, 'qc_plots', 'blobtools')
 		self.ann_ass_dir = os.path.join(outdir, 'annotated_assemblies')
+		self.final_fasta = os.path.join(outdir, 'collated_assemblies', 'genome_fasta')
+		self.final_gbk = os.path.join(outdir, 'collated_assemblies', 'genome_gbk')
+		self.protein_fasta = os.path.join(outdir, 'collated_assemblies', 'protein_fasta')
 		self.temp_dir = os.path.join(outdir, '.temp')
 		self.successful = defaultdict(list)
 		self.failed = defaultdict(list)
 		self.verbosity = verbosity
+		self.ion_torrent = ion_torrent
 		self.steps = [
 					'fastqc',
 					'spades',
@@ -57,6 +63,8 @@ class Asqcan():
 			if k > (max_read_len/2):
 				logging.info("{}: Running spades with kmers {}".format(sample_name, ",".join(run_ks)))
 				return ','.join(run_ks)
+		logging.info("{}: Running spades with kmers {}".format(sample_name, ",".join(run_ks)))
+		return ','.join(run_ks)
 	
 	def check_fix_SRA_reads(self, reads):
 		sample_name = get_sample_name(reads)
@@ -72,26 +80,27 @@ class Asqcan():
 				break
 		reads_handle.close()
 		for seq in seqs:
-			if len(seq) > 301:
+			if len(seq) > 1000:
 				logging.info("{}: Long reads detected, please ensure your reads are sourced from the Illumina sequencing platform.".format(sample_name))
 				return False
-		if headers[0] != headers[1]:
-			sO = re.match(r'^@[SED]RR[0-9]+', headers[0])
-			if sO:
-				logging.info("{}: Incompatible read archive format detected. Attempting to fix...".format(sample_name))
-				make_outdirs(self.temp_dir)
-				reads_handle = self.open_reads(reads)
-				fixed_reads = os.path.join(self.temp_dir, "{}.fixed.fastq".format(sample_name))
-				with open(fixed_reads, 'w') as fixed_reads_handle:
-					for i, line in enumerate(reads_handle):
-						if i % 4 == 0 or i % 4 == 2:
-							line = re.sub(r'^((@|\+)[SED]RR[^.]+\.[^.]+)\.(1|2)', r'\1 \3', line)
-						fixed_reads_handle.write(line)
-				logging.info("{}: Reads fix complete.".format(sample_name))
-				return fixed_reads
-			else:
-				logging.info("{}: Incompatible read header format detected. Headers (writing between @ and first space) for paired reads do not match. This will caused problems for bwa in the spades pipeline when run with the --careful option. If you wish to use this option for assemblies, please ensure you are using Illumina paired-end reads and correct your fastq file headers.".format(sample_name))
-				return False
+		if self.ion_torrent == False:
+			if headers[0] != headers[1]:
+				sO = re.match(r'^@[SED]RR[0-9]+', headers[0])
+				if sO:
+					logging.info("{}: Incompatible read archive format detected. Attempting to fix...".format(sample_name))
+					make_outdirs(self.temp_dir)
+					reads_handle = self.open_reads(reads)
+					fixed_reads = os.path.join(self.temp_dir, "{}.fixed.fastq".format(sample_name))
+					with open(fixed_reads, 'w') as fixed_reads_handle:
+						for i, line in enumerate(reads_handle):
+							if i % 4 == 0 or i % 4 == 2:
+								line = re.sub(r'^((@|\+)[SED]RR[^.]+\.[^.]+)\.(1|2)', r'\1 \3', line)
+							fixed_reads_handle.write(line)
+					logging.info("{}: Reads fix complete.".format(sample_name))
+					return fixed_reads
+				else:
+					logging.info("{}: Incompatible read header format detected. Headers (writing between @ and first space) for paired reads do not match. This will caused problems for bwa in the spades pipeline when run with the --careful option. If you wish to use this option for assemblies, please ensure you are using Illumina paired-end reads and correct your fastq file headers.".format(sample_name))
+					return False
 		return reads
 	
 	def assemble_reads(self, reads):
@@ -99,6 +108,7 @@ class Asqcan():
 		make_outdirs(self.raw_ass_dir)
 		output = os.path.join(self.raw_ass_dir, sample_name, 'scaffolds.fasta')
 		os.path.isfile(output)
+		threads = '4' if int(self.threads) >= 4 else self.threads
 		if not os.path.isfile(output):
 			reads = self.check_fix_SRA_reads(reads)
 			if reads == False:
@@ -106,13 +116,17 @@ class Asqcan():
 				self.log_exit_status('1', 'spades', sample_name)
 				return
 			logging.info("{}: Assembling reads with spades...".format(sample_name))
+			if self.ion_torrent == True:
+				it_opt = ['--iontorrent', '-s', reads]
+			else:
+				it_opt = ['--pe1-12', reads]
 			if os.path.isdir(os.path.join(self.raw_ass_dir, sample_name)):
 				shutil.rmtree(os.path.join(self.raw_ass_dir, sample_name))
 			exitcode = run_command([
-									'spades.py',
-									'--careful',
-									'--pe1-12', reads,
-									'-t', self.threads,
+									'spades.py'] +
+									it_opt +
+									['--careful',
+									'-t', threads,
 									'-m', self.mem,
 									'-k', self.kmer_calc(reads),
 									'--cov-cutoff', 'auto',
@@ -123,16 +137,19 @@ class Asqcan():
 				if os.path.isdir(os.path.join(self.raw_ass_dir, sample_name)):
 					shutil.rmtree(os.path.join(self.raw_ass_dir, sample_name))
 				exitcode = run_command([
-										'spades.py',
-										'--pe1-12', reads,
-										'-t', self.threads,
+										'spades.py'] +
+										it_opt +
+										['--pe1-12', reads,
+										'-t', threads,
 										'-m', self.mem,
 										'-k', self.kmer_calc(reads),
 										'--cov-cutoff', 'auto',
 										'-o', os.path.join(self.raw_ass_dir, sample_name)
 										])
-			self.log_exit_status(exitcode, 'spades', sample_name)
 			self.clear_temp_dir()
+		else:
+			exitcode = 0
+		self.log_exit_status(exitcode, 'spades', sample_name)
 	
 	def run_quast(self, reads):
 		sample_name = get_sample_name(reads)
@@ -147,7 +164,9 @@ class Asqcan():
 									'-t', self.threads,
 									'-o', os.path.join(self.quast_dir, sample_name)
 									] + ass_list))
-			self.log_exit_status(exitcode, 'quast', sample_name)
+		else:
+			exitcode = 0
+		self.log_exit_status(exitcode, 'quast', sample_name)
 	
 	def run_fastqc(self, reads):
 		make_outdirs(self.fastqc_dir)
@@ -199,7 +218,9 @@ class Asqcan():
 									'-num_threads', self.threads,
 									'-out', blast_hits_file
 									])
-			self.log_exit_status(exitcode, 'blastn', sample_name)
+		else:
+			exitcode = 0
+		self.log_exit_status(exitcode, 'blastn', sample_name)
 	
 	def run_bt_create(self, reads):
 		sample_name = get_sample_name(reads)
@@ -211,7 +232,7 @@ class Asqcan():
 			logging.info("Generating {} blobDB...".format(sample_name))
 			if self.db == "Not used":
 				exitcode = run_command([
-										'blobtools', 'create',
+										'bash', find_executable("blobtools"), 'create',
 										'-i', assembly, 
 										'-y', 'spades',
 										'-x', 'bestsumorder',
@@ -219,68 +240,76 @@ class Asqcan():
 										])
 			else:
 				exitcode = run_command([
-										'blobtools', 'create',
+										'bash', find_executable("blobtools"), 'create',
 										'-i', assembly, 
 										'-y', 'spades',
 										'-t', blast_hits_file,
 										'-x', 'bestsumorder',
 										'-o', os.path.join(self.blobtools_dir, sample_name, sample_name)
 										])
-			self.log_exit_status(exitcode, 'blobtools create', sample_name)
+		else:
+			exitcode = 0
+		self.log_exit_status(exitcode, 'blobtools create', sample_name)
 	
 	def run_bt_view(self, reads):
 		sample_name = get_sample_name(reads)
 		blobdb_file = os.path.join(self.blobtools_dir, sample_name, '{}.blobDB.json'.format(sample_name))
-		blob_table = os.path.join(self.blobtools_dir, sample_name, '{}.blobDB.bestsumorder.table.txt'.format(sample_name))
+		blob_table = os.path.join(self.blobtools_dir, sample_name, '{}.{}.blobDB.bestsumorder.table.txt'.format(sample_name,sample_name))
 		if not os.path.isfile(blob_table):
 			logging.info("{}: blobtools: Generating blob table...".format(sample_name))
 			exitcode = run_command([
-									'blobtools', 'view',
+									'bash', find_executable("blobtools"), 'view',
 									'-i', blobdb_file,
 									'-x', 'bestsumorder',
 									'-r', 'species',
 									'-b',
 									'-o', os.path.join(self.blobtools_dir, sample_name, sample_name)
 									])
-			self.log_exit_status(exitcode, 'blobtools view', sample_name)
+		else:
+			exitcode = 0
+		self.log_exit_status(exitcode, 'blobtools view', sample_name)
 	
 	def run_bt_plot_genus(self, reads):
 		sample_name = get_sample_name(reads)
 		blobdb_file = os.path.join(self.blobtools_dir, sample_name, '{}.blobDB.json'.format(sample_name))
-		blob_plot_genus = os.path.join(self.blobtools_dir, sample_name, '{}.bestsumorder.genus.p7.span.100.blobplot.spades.png'.format(blobdb_file))
+		blob_plot_genus = os.path.join(self.blobtools_dir, sample_name, '{}.{}.blobDB.json.bestsumorder.genus.p7.span.100.blobplot.spades.png'.format(sample_name, sample_name))
 		if not os.path.isfile(blob_plot_genus):
 			logging.info("{}: blobtools: Generating blob genus plot...".format(sample_name))
 			exitcode = run_command([
-									'blobtools', 'plot',
+									'bash', find_executable("blobtools"), 'plot',
 									'-i', blobdb_file,
 									'-x', 'bestsumorder',
 									'-r', 'genus',
 									'-l', '100',
 									'-o', os.path.join(self.blobtools_dir, sample_name, sample_name)
 									])
-			self.log_exit_status(exitcode, 'blobtools plot genus', sample_name)
+		else:
+			exitcode = 0
+		self.log_exit_status(exitcode, 'blobtools plot genus', sample_name)
 	
 	def run_bt_plot_species(self, reads):
 		sample_name = get_sample_name(reads)
 		blobdb_file = os.path.join(self.blobtools_dir, sample_name, '{}.blobDB.json'.format(sample_name))
-		blob_plot_species = os.path.join(self.blobtools_dir, sample_name, '{}.bestsumorder.species.p7.span.100.blobplot.spades.png'.format(blobdb_file))
+		blob_plot_species = os.path.join(self.blobtools_dir, sample_name, '{}.{}.blobDB.json.bestsumorder.species.p7.span.100.blobplot.spades.png'.format(sample_name, sample_name))
 		if not os.path.isfile(blob_plot_species):
 			logging.info("{}: blobtools: Generating blob species plot...".format(sample_name))
 			exitcode = run_command([
-									'blobtools', 'plot',
+									'bash', find_executable("blobtools"), 'plot',
 									'-i', blobdb_file,
 									'-x', 'bestsumorder',
 									'-r', 'species',
 									'-l', '100',
 									'-o', os.path.join(self.blobtools_dir, sample_name, sample_name)
 									])
-			self.log_exit_status(exitcode, 'blobtools plot species', sample_name)
+		else:
+			exitcode = 0
+		self.log_exit_status(exitcode, 'blobtools plot species', sample_name)
 	
 	def run_prokka(self, reads):
 		sample_name = get_sample_name(reads)
 		make_outdirs(self.ann_ass_dir)
 		assembly = os.path.join(self.raw_ass_dir, sample_name, 'scaffolds.fasta')
-		output =  os.path.join(self.ann_ass_dir, sample_name, '{}.gbk'.format(sample_name))
+		output =  os.path.join(self.ann_ass_dir, sample_name, '{}.gbf'.format(sample_name))
 		if not os.path.isfile(output):
 			logging.info("{}: Annotating assembly with prokka...".format(sample_name))
 			exitcode = run_command([
@@ -290,7 +319,28 @@ class Asqcan():
 									'--cpus', self.threads,
 									assembly
 									])
-			self.log_exit_status(exitcode, 'prokka', sample_name)
+		else:
+			exitcode = 0
+		self.log_exit_status(exitcode, 'prokka', sample_name)
+	
+	def collate_sequence_files(self, reads):
+		sample_name = get_sample_name(reads)
+		make_outdirs(self.final_fasta)
+		make_outdirs(self.final_gbk)
+		make_outdirs(self.protein_fasta)
+		fasta_assembly = os.path.join(self.raw_ass_dir, sample_name, 'scaffolds.fasta')
+		gb_assembly = os.path.join(self.ann_ass_dir, sample_name, '{}.gbf'.format(sample_name))
+		protein_fasta = os.path.join(self.ann_ass_dir, sample_name, '{}.faa'.format(sample_name))
+		output_fna =  os.path.join(self.final_fasta, '{}.fna'.format(sample_name))
+		output_gbk =  os.path.join(self.final_gbk, '{}.gb'.format(sample_name))
+		output_faa =  os.path.join(self.protein_fasta, '{}.faa'.format(sample_name))
+		if not os.path.isfile(output_fna):
+			shutil.copyfile(fasta_assembly, output_fna)
+		if not os.path.isfile(output_gbk):
+			shutil.copyfile(gb_assembly, output_gbk)
+		if not os.path.isfile(output_faa):
+			shutil.copyfile(protein_fasta, output_faa)
+	
 	
 	def generate_report(self, report_path):
 		out_d = defaultdict(list)
@@ -336,6 +386,8 @@ class Asqcan():
 		self.run_fastqc(self.reads_list)
 		for reads in self.reads_list:
 			self.assemble_reads(reads)
+		# p = multiprocessing.Pool(self.spades_threads)
+		# p.map(self.assemble_reads, reads)
 		for reads in self.reads_list:
 			if get_sample_name(reads) in self.successful['spades']:
 				self.run_quast(reads)
@@ -349,6 +401,7 @@ class Asqcan():
 		for reads in self.reads_list:
 			if get_sample_name(reads) in self.successful['spades']:
 				self.run_prokka(reads)
+				self.collate_sequence_files(reads)
 		logging.info("Generating summary report, find this at {}".format(os.path.join(self.outdir, "asqcan_report.tsv")))
 		self.generate_report(report_path)
 
@@ -409,11 +462,11 @@ def configure_outdir(outdir, force):
 	else:
 		os.makedirs(outdir)
 
-def run(threads, mem, reads_dir, force, outdir, verbosity, db):
+def run(threads, mem, reads_dir, force, outdir, verbosity, db, ion_torrent):
 	configure_outdir(outdir, force)
 	configure_logs(verbosity, outdir)
 	logging.info("Beginning asqcan run...")
-	job = Asqcan(threads, mem, db, reads_dir, outdir, verbosity)
+	job = Asqcan(threads, mem, db, reads_dir, outdir, verbosity, ion_torrent)
 	if force == True:
 		logging.info("Force option given. Deleting previous asqcan run...")
 	logging.info("Log for the current run can be found at {}.".format(os.path.join(outdir, 'logs')))

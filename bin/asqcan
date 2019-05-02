@@ -11,8 +11,9 @@ required = parser.add_argument_group('required arguments')
 required.add_argument("-q", "--fastq-dir", required=True, help="Path to a directory with your interleaved fastq files.", action="store", dest="reads_dir")
 required.add_argument("-o", "--output-directory", required=True, help="Path to the output directory. A directory will be created if one does not exist.", action="store", dest="outdir")
 optional.add_argument("-b", "--blast_database", help="Path to the local nt blast database. This pipeline does not require you to have a local copy of the nt database but without it you will not be able to use similarity data for blobtools. Similarity data adds significantly to the blobplot and blobtools table outputs of this pipeline. See https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Web&PAGE_TYPE=BlastDocs&DOC_TYPE=Download to install a local nt database.", action="store", dest="db", default="Not used")
+optional.add_argument("-i", "--ion-torrent", help="Reads are sourced from the Ion Torrent platform. Don't include this if your reads are Illumina-sourced.", action="store_true", dest="ion_torrent", default=False)
 optional.add_argument("-t", "--threads", help="Number of threads to use for multiprocessing.", action="store", dest="threads", type=int, default=1)
-optional.add_argument("-m", "--max_memory", help="Maximum amount of RAM to assign to the pipeline in GB (Just the number).", action="store", dest="mem", type=int, default=8)
+optional.add_argument("-m", "--max_memory", help="Maximum amount of RAM to assign to the pipeline in GB (Just the number).", action="store", dest="mem", type=int, default=32)
 optional.add_argument("-f", "--force", help="Overwrite files in the output directories.", action='store_true', default=False)
 optional.add_argument('--version', action='version', version='%(prog)s 0.1')
 optional.add_argument('-v', '--verbose', help="Increase verbosity on command line output (n.b. verbose output is always saved to asqcan.log in the output directory).", action='store_true', default=False)
@@ -53,6 +54,11 @@ print "threads = {}".format(args.threads)
 print "max_memory = {}".format(args.mem)
 print "blast_database = {}".format(args.db)
 print "Force overwrite of previous output: {}\n".format(args.force)
+if args.ion_torrent == True:
+	print "Reads source = Ion Torrent"
+else:
+	print "Reads source = Illumina"
 
-asqcan.run(args.threads, args.mem, os.path.abspath(args.reads_dir), args.force, os.path.abspath(args.outdir), args.verbose, args.db)
+
+asqcan.run(args.threads, args.mem, os.path.abspath(args.reads_dir), args.force, os.path.abspath(args.outdir), args.verbose, args.db, args.ion_torrent)
 
