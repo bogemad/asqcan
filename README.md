@@ -9,7 +9,7 @@ asqcan is a workflow pipeline for the automated assembly, quality control and an
 4. Contamination and quality analysis of assemblies with blobtools
 5. Annotation of assemblies using prokka
 
-The asqcan pipleine runs these five steps on each .fastq or .fastq.gz reads file in the directory provided by the -i option. When asqcan completes, it generates a report on the success or failure of each step of the pipline (asqcan_rport.tsv). Successful steps will not be rerun on a subsequent execution, i.e. asqcan will detect successful steps and ignore them in future runs. 
+The asqcan pipleine runs these five steps on each .fastq or .fastq.gz reads file in the directory provided by the -q option. When asqcan completes, it generates a report on the success or failure of each step of the pipline (asqcan_rport.tsv). Successful steps will not be rerun on a subsequent execution, i.e. asqcan will detect successful steps and ignore them in future runs. 
 
 ###  Requirements
 
