@@ -1,6 +1,7 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python
 
-import sys, asqcan, argparse, distutils, os
+import sys, asqcan, argparse, distutils, os, requests
+from zipfile import ZipFile
 from distutils.spawn import find_executable
 
 # Import arguments
@@ -10,12 +11,14 @@ required = parser.add_argument_group('required arguments')
 
 required.add_argument("-q", "--fastq-dir", required=True, help="Path to a directory with your interleaved fastq files.", action="store", dest="reads_dir")
 required.add_argument("-o", "--output-directory", required=True, help="Path to the output directory. A directory will be created if one does not exist.", action="store", dest="outdir")
-optional.add_argument("-b", "--blast_database", help="Path to the local nt blast database. This pipeline does not require you to have a local copy of the nt database but without it you will not be able to use similarity data for blobtools. Similarity data adds significantly to the blobplot and blobtools table outputs of this pipeline. See https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Web&PAGE_TYPE=BlastDocs&DOC_TYPE=Download to install a local nt database.", action="store", dest="db", default="Not used")
+#optional.add_argument("-a", "--assembler", help="[Not currently functional] Assembly algorithm to use. Options [spades, skesa]", action="store", dest="assembler", choices=('skesa', 'spades'), default="spades")
+optional.add_argument("-s", "--searcher", help="Search algorithm to use. Options [blastn, diamond]", action="store", dest="searcher", choices=('blastn', 'diamond'), default="diamond")
+optional.add_argument("-b", "--search_database", help="Path to the local search database. This pipeline does not require you to have a local copy of a search database but without it you will not be able to use similarity data for blobtools. Similarity data adds significantly to the blobplot and blobtools table outputs of this pipeline. See https://blast.ncbi.nlm.nih.gov/Blast.cgi?CMD=Web&PAGE_TYPE=BlastDocs&DOC_TYPE=Download to install a local database.", action="store", dest="db", default="Not used")
 optional.add_argument("-i", "--ion-torrent", help="Reads are sourced from the Ion Torrent platform. Don't include this if your reads are Illumina-sourced.", action="store_true", dest="ion_torrent", default=False)
 optional.add_argument("-t", "--threads", help="Number of threads to use for multiprocessing.", action="store", dest="threads", type=int, default=1)
 optional.add_argument("-m", "--max_memory", help="Maximum amount of RAM to assign to the pipeline in GB (Just the number).", action="store", dest="mem", type=int, default=32)
 optional.add_argument("-f", "--force", help="Overwrite files in the output directories.", action='store_true', default=False)
-optional.add_argument('--version', action='version', version='%(prog)s 0.1')
+optional.add_argument('--version', action='version', version='%(prog)s 0.4')
 optional.add_argument('-v', '--verbose', help="Increase verbosity on command line output (n.b. verbose output is always saved to asqcan.log in the output directory).", action='store_true', default=False)
 
 parser._action_groups.append(optional)
@@ -23,42 +26,88 @@ parser._action_groups.append(optional)
 args = parser.parse_args()
 
 #Check for dependencies
-print "Checking dependencies...\n"
+print("Checking dependencies...\n")
+if not find_executable("bwa"):
+	print("bwa not found. Please install the bwa aligner.")
+	sys.exit(1)
+if not find_executable("samtools"):
+	print("samtools not found. Please install the samtools package.")
+	sys.exit(1)
 if not find_executable("spades.py"):
-	print "spades not found. Please install the spades assembler."
+	print("spades not found. Please install the spades assembler.")
+	sys.exit(1)
+# if not find_executable("skesa"):
+	# print("skesa not found. Please install the skesa assembler.")
+	# sys.exit(1)
+if not find_executable("diamond"):
+	print("diamond not found. Please install the diamond search algorithm.")
 	sys.exit(1)
 if not find_executable("quast.py"):
-	print "quast not found. Please install the quast qc pipeline."
+	print("quast not found. Please install the quast qc pipeline.")
 	sys.exit(1)
-if not find_executable("fastqc"):
-	print "fastqc not found. Please install the fastqc pipeline."
+if not find_executable("fastp"):
+	print("fastp not found. Please install the fastp pipeline.")
 	sys.exit(1)
 if not find_executable("blobtools"):
-	print "blobtools not found. Please install the blobtools pipeline."
+	print("blobtools not found. Please install the blobtools pipeline.")
 	sys.exit(1)
 if not find_executable("blastn"):
-	print "blastn not found. Please install the ncbi BLAST pipeline."
+	print("blastn not found. Please install the ncbi BLAST pipeline.")
 	sys.exit(1)
 if not find_executable("prokka"):
-	print "prokka not found. Please install the prokka annotator."
+	print("prokka not found. Please install the prokka annotator.")
 	sys.exit(1)
 if not find_executable("parallel"):
-	print "parallel not found. Please install GNU parallel."
+	print("parallel not found. Please install GNU parallel.")
 	sys.exit(1)
+if not os.path.isfile(os.path.join(os.getenv("HOME"), '.asqcan', 'prot.accession2taxid.gz')):
+	if not os.path.isdir(os.path.join(os.getenv("HOME"), '.asqcan')):
+		os.mkdir(os.path.join(os.getenv("HOME"), '.asqcan'))
+	print("Downloading taxonmap file...")
+	with requests.get('https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/accession2taxid/prot.accession2taxid.gz', stream=True) as r:
+		r.raise_for_status()
+		with open(os.path.join(os.getenv("HOME"), '.asqcan', 'prot.accession2taxid.gz'), 'wb') as f:
+			for chunk in r.iter_content(chunk_size=8192):
+				if chunk: # filter out keep-alive new chunks
+					f.write(chunk)
+
+if not os.path.isfile(os.path.join(os.getenv("HOME"), '.asqcan', 'nodes.dmp')):
+	if not os.path.isdir(os.path.join(os.getenv("HOME"), '.asqcan')):
+		os.mkdir(os.path.join(os.getenv("HOME"), '.asqcan'))
+	print("Downloading taxonnodes file...")
+	with requests.get('https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdmp.zip', stream=True) as r:
+		r.raise_for_status()
+		with open(os.path.join(os.getenv("HOME"), '.asqcan', 'taxdmp.zip'), 'wb') as f:
+			for chunk in r.iter_content(chunk_size=8192):
+				if chunk: # filter out keep-alive new chunks
+					f.write(chunk)
+	with ZipFile(os.path.join(os.getenv("HOME"), '.asqcan', 'taxdmp.zip'), 'r') as zipObj:
+		zipObj.extract('nodes.dmp', os.path.join(os.getenv("HOME"), '.asqcan'))
+	os.remove(os.path.join(os.getenv("HOME"), '.asqcan', 'taxdmp.zip'))
+
+	
+	
 
 
-print "Running asqcan with the following options:"
-print "Reads directory = {}".format(args.reads_dir)
-print "output-directory = {}".format(args.outdir)
-print "threads = {}".format(args.threads)
-print "max_memory = {}".format(args.mem)
-print "blast_database = {}".format(args.db)
-print "Force overwrite of previous output: {}\n".format(args.force)
+print("Running asqcan with the following options:")
+print("Reads directory = {}".format(args.reads_dir))
+print("output-directory = {}".format(args.outdir))
+print("threads = {}".format(args.threads))
+print("max_memory = {}".format(args.mem))
+print("blast_database = {}".format(args.db))
+print("Force overwrite of previous output: {}".format(args.force))
 if args.ion_torrent == True:
-	print "Reads source = Ion Torrent"
+	print("Reads source = Ion Torrent")
+	# assembler = 'spades'
 else:
-	print "Reads source = Illumina"
+	print("Reads source = Illumina")
+	# assembler = args.assembler
+assembler = 'spades'
+print("Assembly algorithm = {}".format(assembler))
+print("Search algorithm = {}".format(args.searcher))
+print('\n')
 
 
-asqcan.run(args.threads, args.mem, os.path.abspath(args.reads_dir), args.force, os.path.abspath(args.outdir), args.verbose, args.db, args.ion_torrent)
+
+asqcan.run(args.threads, args.mem, os.path.abspath(args.reads_dir), args.force, os.path.abspath(args.outdir), args.verbose, args.db, args.ion_torrent, assembler, args.searcher)
 

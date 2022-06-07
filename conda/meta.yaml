@@ -1,0 +1,43 @@
+{% set version = "0.4" %}
+
+package:
+  name: asqcan
+  version: {{ version }}
+
+source:
+  url: https://github.com/bogemad/asqcan/archive/v{{ version }}.tar.gz
+  md5: e48ddb45c709cf4850fd2a2bb96e4af0
+
+build:
+  noarch: python
+  number: 0
+  script: {{ PYTHON }} -m pip install . --ignore-installed --no-deps -vv
+
+requirements:
+  host:
+    - python
+    - pip
+  run:
+    - python
+    - requests
+    - bwa
+    - samtools
+    - skesa
+    - diamond
+    - parallel
+    - fastqc
+    - spades
+    - quast
+    - blobtools
+    - blast
+    - prokka
+
+test:
+  commands:
+    - asqcan -h
+
+about:
+  home: https://github.com/bogemad/asqcan
+  license: GPLv3
+  summary: 'A combined pipeline for bacterial genome assembly, quality control and annotation'
+  license_family: GPL
