@@ -42,7 +42,7 @@ if not find_executable("spades.py"):
 if not find_executable("diamond"):
 	print("diamond not found. Please install the diamond search algorithm.")
 	sys.exit(1)
-if not find_executable("quast.py"):
+if not find_executable("quast"):
 	print("quast not found. Please install the quast qc pipeline.")
 	sys.exit(1)
 if not find_executable("fastp"):

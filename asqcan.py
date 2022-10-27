@@ -157,7 +157,7 @@ class Asqcan():
             logging.info("Quality checking assemblies with quast...")
             assemblies = [ os.path.join(self.raw_ass_dir, dir, 'scaffolds.fasta') for dir in os.listdir(self.raw_ass_dir) ]
             exitcode = run_command(([
-                                    'quast.py',
+                                    'quast',
                                     '-t', self.threads,
                                     '-o', os.path.join(self.quast_dir)
                                     ] + assemblies))
